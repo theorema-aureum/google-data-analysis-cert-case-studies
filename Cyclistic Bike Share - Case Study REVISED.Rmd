@@ -1,0 +1,151 @@
+---
+title: "Cyclistic Bike Share - Case Study"
+output: 
+  html_document: 
+    fig_height: 4
+    highlight: pygments
+    theme: spacelab
+---
+
+###### This exploratory data analysis (EDA) is based on the Divvy case study "'Sophisticated, Clear, and Polished’: Divvy and Data Visualization" written by Kevin Hartman (found here: https://artscience.blog/home/divvy-dataviz-case-study) with the adjustment of using 2022 bike data. The purpose of this EDA is to consolidate downloaded Divvy data into a single dataframe and then  answer the key question: “In what ways do members and casual riders use Divvy bikes differently?” This case study is completed to satisfy the capstone project requirement for the Google Data Analytics Professional certificate hosted through Coursera.
+
+
+### Load packages
+
+```{r load-packages, message = FALSE}
+library(tidyverse) 
+library(rstatix)
+```
+
+### Load data
+
+```{r load-data}
+load("cyclistic_data.Rdata")
+```
+
+
+
+* * * 
+
+## Data Cleaning
+
+## Inspect new table
+
+```{r}
+colnames(cyclistic_data)  
+nrow(cyclistic_data) 
+dim(cyclistic_data)  
+head(cyclistic_data)  
+str(cyclistic_data) 
+summary(cyclistic_data)
+```
+
+###### The data can only be aggregated at the ride-level. We will want to add some additional columns of data for day, month, and year to provide additional opportunities to aggregate the data. There are some rides where trip duration is negative, which is due to bikes being removed for quality control.
+
+###### Add columns that list the date, month, day, and year of each ride. Note that the final line changed day of week to a word instead of a number, from numeric to character. Add a column ride_length as a calculation of trip duration in minutes.
+
+```{r}
+cyclistic_data <- cyclistic_data %>%
+  mutate(
+    start_date = date(started_at),
+    start_month = month(started_at),
+    start_day = day(started_at), 
+    start_year = year(started_at),
+    start_day_of_week = wday(started_at, label = TRUE, abbr = FALSE),
+    ride_length = interval(cyclistic_data$started_at, cyclistic_data$ended_at) / minutes(1)
+  )
+
+cyclistic_data <- cyclistic_data %>% filter(! (ride_length < 0))
+```
+
+
+* * *
+
+## Check Summary Statistics
+
+###### Check out the summary statistics for ride_length and then do the same by membership type. Casual customers do not have a membership while member customers do have a membership. On average, bukes were used for 19.45 minutes over a range of 0 minutes to 41,387 minutes. Presumably 0-minute rides and extremely prolonged rides were accidental. No further information is available for these instances, however it could become a further point of study. On average, casual customers rode the bikes for an average of 29.16 minutes while members rode the bikes for an average of 12.71 minutes. Although Saturday has the highest number of rides per day, Sunday has the longest ride per day on average.
+
+````{r}
+cyclistic_data %>% count(member_casual) %>% rename(`Membership Status` = member_casual, Total = n)
+
+cyclistic_data %>% select(ride_length) %>% get_summary_stats()
+cyclistic_data %>% group_by(member_casual) %>% select(ride_length) %>% get_summary_stats()
+
+cyclistic_data %>% group_by(start_day_of_week) %>% select(ride_length) %>% get_summary_stats()
+```
+
+
+* * *
+
+## Accompanying Graphics
+
+###### Create a data subset for use with the visualizations.
+
+```{r}
+cyclistic_subset <- cyclistic_data %>% 
+  group_by(member_casual, start_day_of_week) %>%  
+  summarize(
+    `Number of Rides` = n(),					
+    `Average Duration` = round(mean(ride_length), 2)
+    ) %>% 		
+  arrange(start_day_of_week, member_casual)	%>%
+  rename(`Membership Status` = member_casual, `Day of Week - Ride Start` = start_day_of_week)
+```
+
+###### Consider the following two graphics displaying weekday usage and average ride duration by membership status. In the first graphic, bicycle usage regardless of membership status is near-equal on the weekends. Some sort of perk for weekend usage by members could be devised as an incentive for casual customers to begin a membership. In the second graphic, on all days it appears that casual customers tend to ride Cyclistic bikes longer than members. Some sort of a members-only mileage program can be implemented to encourage casual customers to begin memberships and encourage members to use the bikes more often. 
+
+```{r}
+ggplot(cyclistic_subset) +
+  geom_col(
+    aes(x = `Day of Week - Ride Start`, y = `Number of Rides`, fill = `Membership Status`), 
+    position = "dodge"
+    ) +
+  labs(title = "Weekday Usage by Membership Status") +
+  scale_y_continuous(breaks = seq(0, 500000, 50000), labels = scales::label_comma()) + 
+  guides(fill = guide_legend(title = "Membership Status")) +
+  scale_fill_discrete(labels = c("Casual", "Member")) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+```{r}
+  ggplot(cyclistic_subset) +
+  geom_col(
+    aes(`Day of Week - Ride Start`, y = `Average Duration`, fill = `Membership Status`), 
+    position = "dodge"
+    ) +
+  labs(title = "Average Ride Duration by Membership Status", y = "Average Duration (minutes)") +
+  scale_y_continuous(breaks = seq(0, 40, 5)) +
+  guides(fill = guide_legend(title = "Membership")) +
+  scale_fill_discrete(labels = c('Casual', 'Member')) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
+
+###### Additionally, there are 6,319 instances where bikes were taken out for more than 1,000 minutes. Although not the most popular option, more market research could be done to determine why the bikes were taken out for so long and whether or not a long-term usage bike plan is worth developing.
+
+```{r}
+cyclistic_data %>% filter(ride_length >= 1000)
+```
+
+###### Members did not use docked bicycles at all, while casual customers barely used them. Devise a reward system (reduced rates, free time, etc.) for consistently using a docked bicycle. Casual customers tend to use electric bicycles more than classic bicycles. A promotion for reduced rates with classic bicycle usage may appeal to casual customers and encourage them to start a membership.
+
+```{r}
+cyclistic_data %>% 
+  filter(!is.na(rideable_type)) %>%
+  group_by(member_casual, rideable_type) %>% 
+  summarise(number_of_rides = n()) %>% 
+  ggplot() +
+  geom_col(aes(x = rideable_type, y = number_of_rides, fill = member_casual), position = "dodge") +
+  labs(
+    title = "Bicycle Type by Membership Status", 
+    x = "Type of Bicycle", 
+    y = "Total"
+    ) +
+  scale_x_discrete(labels = c("Classic", "Docked", "Electric")) + 
+  scale_y_continuous(breaks = seq(0, 2000000, 250000)) +
+  guides(fill = guide_legend(title = "Membership Status")) +
+  scale_fill_discrete(labels=c('Casual', 'Member')) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5)) 
+```
