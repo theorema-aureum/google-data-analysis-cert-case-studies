@@ -1,0 +1,264 @@
+---
+title: "Case Study 1"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Divvy_Exercise_Full_Year_Analysis ###
+
+# This analysis is based on the Divvy case study "'Sophisticated, Clear, and Polished’: Divvy and Data Visualization" written by Kevin Hartman (found here: https://artscience.blog/home/divvy-dataviz-case-study). The purpose of this script is to consolidate downloaded Divvy data into a single dataframe and then conduct simple analysis to help answer the key question: “In what ways do members and casual riders use Divvy bikes differently?”
+
+# Adapted for case study 1 using Cyclistic2022 bike data
+
+## We need these packages 
+
+```{r}
+library(tidyverse) # data wrangling
+library(dplyr) # data wrangling
+library(lubridate)  # work with dates
+library(ggplot2)  # visualize data
+library(scales) # visualize data
+
+```
+
+
+
+# Step 1: Collect Data
+
+## Upload Divvy datasets (excel files) 
+
+```{r}
+dec2021 <- read.csv()
+jan2022 <- read.csv()
+feb2022 <- read.csv()
+mar2022 <- read.csv()
+apr2022 <- read.csv()
+may2022 <- read.csv()
+jun2022 <- read.csv()
+jul2022 <- read.csv()
+aug2022 <- read.csv()
+sep2022 <- read.csv()
+oct2022 <- read.csv()
+nov2022 <- read.csv()
+dec2022 <- read.csv()
+```
+
+
+
+# Step 2: Wrange Data and Place in a Single File
+
+## Inspect the dataframes and look for incongruencies
+
+```{r}
+str(dec2021)
+str(jan2022)
+str(feb2022)
+str(mar2022)
+str(apr2022)
+str(may2022)
+str(jun2022)
+str(jul2022)
+str(aug2022)
+str(sep2022)
+str(oct2022)
+str(nov2022)
+str(dec2022)
+```
+
+## In Sep2022, end_station_id was numeric; changed data type to character for consistency
+
+```{r}
+sep2022 <- mutate(sep2022, end_station_id = as.character(end_station_id))
+```
+
+## Stack individual quarter's data frames into one big data frame
+
+```{r}
+all_trips <- bind_rows(dec2021, jan2022, feb2022, mar2022, apr2022, may2022, jun2022, jul2022, aug2022, sep2022, nov2022, dec2022)
+```
+
+
+
+# Step 3: Clean and Prepare Data
+
+## Inspect new table
+
+```{r}
+colnames(all_trips)  # List of column names
+nrow(all_trips)  # Number of rows are in data frame
+dim(all_trips)  # Dimensions of the data frame
+head(all_trips)  # See the first 6 rows of data frame
+tail(all_trips) # See last 6 rows of data frame
+str(all_trips)  # List of columns and data types 
+summary(all_trips)  #Statistical summary of data
+```
+
+## There are a few problems we will need to fix:
+
+### The data can only be aggregated at the ride-level. We will want to add some additional columns of data for day, month, and year to provide additional opportunities to aggregate the data.
+
+### There are some rides where trip duration is negative, including several hundred rides where Divvy took bikes out of circulation for Quality Control reasons. We want to delete these rides.
+
+
+## Add columns that list the date, month, day, and year of each ride
+### Note that the final line changed day of week to a word instead of a number, from numeric to character
+
+```{r}
+all_trips$date <- as.Date(all_trips$started_at) #The default format is yyyy-mm-dd
+all_trips$month <- format(as.Date(all_trips$date), "%m")
+all_trips$day <- format(as.Date(all_trips$date), "%d")
+all_trips$year <- format(as.Date(all_trips$date), "%Y")
+all_trips$day_of_week <- format(as.Date(all_trips$date), "%A") 
+```
+
+## Add a "ride_length" calculation to all_trips (in minutes)
+### Changed data and hh:mm:ss format to seconds
+
+```{r}
+all_trips$ride_length <- difftime(all_trips$ended_at,all_trips$started_at, units = "mins")
+```
+
+## Convert "ride_length" from Factor to numeric and remove negative values from ride_length (indicates company quality check)
+
+```{r}
+is.factor(all_trips$ride_length)
+all_trips$ride_length <- as.numeric(as.character(all_trips$ride_length))
+is.numeric(all_trips$ride_length)
+all_trips2 <- all_trips[!(all_trips$start_station_name == "HQ QR" | all_trips$ride_length < 0),]
+```
+
+
+
+# Step 4: Descriptive Analysis
+
+## Descriptive analysis on ride_length (all figures in minutes)
+
+````{r}
+mean(all_trips2$ride_length, na.rm = TRUE) #straight average (total ride length / rides)
+median(all_trips2$ride_length, na.rm = TRUE) #midpoint number in the ascending array of ride lengths
+max(all_trips2$ride_length, na.rm = TRUE) #longest ride
+min(all_trips2$ride_length, na.rm = TRUE) #shortest ride
+```
+
+## You can condense the four lines above to one line using summary() on the specific attribute
+
+```{r}
+summary(all_trips2$ride_length)
+```
+
+## Compare members and casual users
+
+```{r}
+aggregate(all_trips2$ride_length ~ all_trips2$member_casual, FUN = mean)
+aggregate(all_trips2$ride_length ~ all_trips2$member_casual, FUN = median)
+aggregate(all_trips2$ride_length ~ all_trips2$member_casual, FUN = max)
+aggregate(all_trips2$ride_length ~ all_trips2$member_casual, FUN = min)
+```
+
+## See the average ride time by each day for members vs casual users
+
+```{r}
+aggregate(all_trips2$ride_length ~ all_trips2$member_casual + all_trips2$day_of_week, FUN = mean)
+```
+
+## Place days of the week in order
+
+```{r}
+all_trips2$day_of_week <- ordered(all_trips2$day_of_week, levels=c("Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"))
+```
+
+## Average ride time by each day for members vs casual users
+
+```{r}
+aggregate(all_trips2$ride_length ~ all_trips2$member_casual + all_trips2$day_of_week, FUN = mean)
+```
+
+## Analyze ridership data by type and weekday
+
+```{r}
+all_trips2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>%  #creates weekday field using wday()
+  group_by(member_casual, weekday) %>%  #groups by user type and weekday
+  summarise(number_of_rides = n(),						#calculates the number of rides and average duration 
+  average_duration = mean(ride_length)) %>% 		# calculates the average duration
+  arrange(member_casual, weekday)								# sorts
+```
+
+
+
+# Visualize 
+
+## Visualization by weekday
+
+```{r}
+all_trips2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  drop_na(weekday) %>%
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  labs(title = "Weekday Usage by Membership Status", x = "Weekday", y = "Number of Rides") +
+  scale_y_continuous(breaks = seq(0, 400000, 100000), labels = label_comma()) + 
+  guides(fill = guide_legend(title="Membership")) +
+  scale_fill_discrete(labels=c('Casual', 'Member')) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), axis.text = element_text(face = "bold")) 
+```
+
+
+## Visualization for average duration
+
+```{r}
+all_trips2 %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  drop_na(ride_length) %>%
+  drop_na(weekday) %>%
+  group_by(member_casual, weekday) %>% 
+  summarise(number_of_rides = n()
+            ,average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)  %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  labs(title = "Average Ride Duration by Membership Status", x = "Weekday", y = "Average Duration (minutes)") +
+  scale_y_continuous(breaks = seq(0, 40, 5)) +
+  guides(fill = guide_legend(title="Membership")) +
+  scale_fill_discrete(labels=c('Casual', 'Member')) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), axis.text = element_text(face = "bold")) 
+```
+
+## Visualization for type of bike by membership
+
+```{r}
+all_trips2 %>% 
+  drop_na(rideable_type) %>%
+  filter(rideable_type == 'classic_bike' | rideable_type == 'electric_bike') %>%
+  group_by(member_casual, rideable_type) %>% 
+  summarise(number_of_rides = n()) %>% 
+  arrange(member_casual, rideable_type)  %>% 
+  ggplot(aes(x = rideable_type, y = number_of_rides, fill = member_casual)) +
+  geom_col(position = "dodge") +
+  labs(title = "Bicycle Type by Membership Status", x = "Type of Bicycle", y = "Total Count",
+       caption = "For clarity, casual riders account for 829,888 uses of \n classic bikes and for 806,673 uses of electric bikes.") +
+  scale_x_discrete(labels = c("Classic", "Electric")) + 
+  scale_y_continuous(breaks = seq(0, 1500000, 250000)) +
+  guides(fill = guide_legend(title="Membership")) +
+  scale_fill_discrete(labels=c('Casual', 'Member')) +
+  theme_classic() +
+  theme(plot.title = element_text(hjust = 0.5), axis.text = element_text(face = "bold")) 
+```
+
+
+
+# Step 5: Summary file
+
+```{r}
+counts <- aggregate(all_trips2$ride_length ~ all_trips2$member_casual + all_trips2$day_of_week, FUN = mean)
+write.csv(counts)
+```
